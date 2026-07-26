@@ -605,3 +605,139 @@ Os seguintes anti-patterns aparecem em múltiplos projetos e devem ser priorizad
 
 ---
 
+
+
+---
+
+## Construção da Skill
+
+### Decisões de Design
+
+#### Estrutura do SKILL.md
+
+O arquivo principal foi estruturado em **3 fases sequenciais** bem definidas:
+
+1. **Fase 1 - Análise:** Detecção automática de stack e mapeamento da arquitetura atual
+2. **Fase 2 - Auditoria:** Identificação de problemas com geração de relatório estruturado
+3. **Fase 3 - Refatoração:** Transformação para padrão MVC com validação
+
+Cada fase tem:
+- Objetivo claro
+- Passos numerados
+- Output formatado esperado
+- Referência aos arquivos de conhecimento relevantes
+
+A **confirmação obrigatória** entre Fase 2 e Fase 3 garante que o usuário revise o relatório antes de qualquer modificação no código.
+
+#### Arquivos de Referência
+
+Optei por separar o conhecimento em **5 arquivos especializados**:
+
+| Arquivo | Propósito | Justificativa |
+|---------|-----------|---------------|
+| `project-analysis.md` | Heurísticas de detecção | Centraliza regras de identificação de linguagem, framework e arquitetura |
+| `anti-patterns-catalog.md` | Catálogo de problemas | Lista completa com sinais de detecção e severidade |
+| `report-template.md` | Formato do relatório | Garante consistência no output da Fase 2 |
+| `mvc-guidelines.md` | Arquitetura alvo | Define estrutura e responsabilidades de cada camada |
+| `refactoring-playbook.md` | Transformações | Exemplos concretos antes/depois para cada correção |
+
+Essa separação permite:
+- Atualizar um aspecto sem afetar os outros
+- Facilitar a manutenção do catálogo de anti-patterns
+- Reutilizar arquivos em outras skills
+
+---
+
+### Catálogo de Anti-Patterns
+
+Incluí **18 anti-patterns** distribuídos por severidade:
+
+#### CRITICAL (5 patterns)
+| Anti-Pattern | Justificativa |
+|--------------|---------------|
+| SQL Injection | Encontrado no projeto 1 (models.py). Vulnerabilidade #1 OWASP. |
+| Hardcoded Credentials | Presente nos 3 projetos. Compromete segurança de toda aplicação. |
+| Insecure Password Storage | Projeto 1 (texto plano), 2 (base64), 3 (MD5). Todos vulneráveis. |
+| Sensitive Data Exposure | Projeto 1 expõe SECRET_KEY no health check. |
+| Missing Authentication | Endpoints admin sem auth nos projetos 1 e 3. |
+
+#### HIGH (5 patterns)
+| Anti-Pattern | Justificativa |
+|--------------|---------------|
+| God Class | Projeto 2 (AppManager.js) concentra tudo em uma classe. |
+| N+1 Queries | Presente nos 3 projetos, causa problemas graves de performance. |
+| Business Logic in Routes | Projetos 1 e 3 têm lógica misturada nas rotas. |
+| Missing Error Handling | Projetos 1 e 2 não tratam erros adequadamente. |
+| Callback Hell | Projeto 2 tem 6+ níveis de callbacks aninhados. |
+
+#### MEDIUM (4 patterns)
+| Anti-Pattern | Justificativa |
+|--------------|---------------|
+| Code Duplication | Validações repetidas nos projetos 1 e 3. |
+| Global Mutable State | Projeto 2 usa variáveis globais mutáveis. |
+| Missing Input Validation | Comum nos 3 projetos. |
+| Magic Strings/Numbers | Status e constantes hardcoded em vários lugares. |
+
+#### LOW (4 patterns)
+| Anti-Pattern | Justificativa |
+|--------------|---------------|
+| Poor Naming | Projeto 2 usa nomes como `u`, `e`, `p`, `cid`. |
+| Console.log/Print Logging | Todos os projetos usam print/console.log. |
+| Unused Imports/Dead Code | Projeto 3 tem imports não utilizados. |
+| Deprecated APIs | Projeto 3 usa `datetime.utcnow()` (deprecated). |
+
+---
+
+### Garantia de Agnóstico de Tecnologia
+
+Para garantir que a skill funciona com diferentes stacks:
+
+1. **Heurísticas genéricas de detecção:**
+   - Detecção por arquivos de configuração (package.json, requirements.txt, etc.)
+   - Detecção por extensões de arquivo (.py, .js, .ts, etc.)
+   - Detecção por patterns de import
+
+2. **Exemplos em múltiplas linguagens:**
+   - Todos os anti-patterns têm exemplos em Python E JavaScript
+   - O playbook de refatoração mostra transformações em ambas as linguagens
+   - As guidelines MVC incluem estruturas para Flask e Express
+
+3. **Padrões de detecção baseados em comportamento:**
+   - SQL Injection: concatenação de strings em queries (qualquer linguagem)
+   - N+1 Queries: query dentro de loop (padrão universal)
+   - God Class: arquivo com múltiplas responsabilidades (agnóstico)
+
+4. **Estrutura MVC adaptável:**
+   - Mesmos conceitos (Models, Controllers, Routes) aplicáveis a qualquer framework
+   - Separação de responsabilidades é princípio universal
+
+---
+
+### Desafios Encontrados e Soluções
+
+#### Desafio 1: Balancear especificidade vs generalidade
+**Problema:** Anti-patterns muito específicos não detectam variações; muito genéricos geram falsos positivos.
+
+**Solução:** Criei sinais de detecção com múltiplos exemplos de código, incluindo variações comuns (concatenação com `+`, f-strings, template literals).
+
+#### Desafio 2: Diferentes níveis de organização entre projetos
+**Problema:** O projeto 3 já tem alguma estrutura (models/, routes/), enquanto os outros são monolíticos.
+
+**Solução:** A Fase 1 mapeia a arquitetura atual antes de propor mudanças. A skill adapta as transformações ao contexto - não força reestruturação total se já existe separação parcial.
+
+#### Desafio 3: Garantir que a aplicação funciona após refatoração
+**Problema:** Refatorações podem quebrar a aplicação.
+
+**Solução:** 
+- Fase 3 inclui validação obrigatória (boot + endpoints)
+- Playbook foca em transformações seguras que preservam comportamento
+- Regra explícita: "Manter todos os endpoints originais funcionando"
+
+#### Desafio 4: Relatório útil mas não verboso
+**Problema:** Relatórios muito longos são ignorados; muito curtos não ajudam.
+
+**Solução:** Template estruturado com:
+- Summary no topo (visão rápida)
+- Findings ordenados por severidade (priorização)
+- Cada finding com arquivo:linha exatos (acionável)
+- Recomendação específica (não genérica)
