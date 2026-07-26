@@ -446,3 +446,162 @@ A skill deve atingir os seguintes mínimos em **todos os 3 projetos**:
 - **Projetos diferentes exigem adaptação** — a Fase 3 de um projeto já parcialmente organizado não vai ter as mesmas transformações de um monolito. Sua skill deve se adaptar ao contexto.
 - **Pedir confirmação na Fase 2 é obrigatório** — o humano deve revisar o relatório antes de qualquer modificação.
 - **Consulte as referências do curso** — revise a documentação oficial da ferramenta escolhida e os materiais das aulas para relembrar a estrutura e anatomia de uma skill.
+
+
+---
+
+## Análise Manual
+
+Análise detalhada dos problemas identificados manualmente em cada um dos 3 projetos legados, classificados por severidade.
+
+---
+
+### Projeto 1: code-smells-project (Python/Flask — API E-commerce)
+
+**Stack:** Python 3 + Flask 3.1.1 + SQLite  
+**Domínio:** API de E-commerce (produtos, usuários, pedidos)  
+**Arquivos analisados:** 4 (app.py, controllers.py, models.py, database.py)
+
+#### CRITICAL (4 problemas)
+
+| # | Problema | Arquivo:Linha | Descrição | Justificativa |
+|---|----------|---------------|-----------|---------------|
+| 1 | **SQL Injection** | `models.py:25-27, 36-39, 52-55, 98-100, 236-244` | Queries construídas com concatenação de strings: `"SELECT * FROM produtos WHERE id = " + str(id)` | Atacante pode ler/modificar/deletar todo o banco de dados. Vulnerabilidade #1 do OWASP Top 10. |
+| 2 | **Hardcoded Credentials** | `app.py:8` | `SECRET_KEY = "minha-chave-super-secreta-123"` | Chave exposta no código-fonte permite forjar sessões e comprometer autenticação. |
+| 3 | **Endpoint Admin Query sem Autenticação** | `app.py:51-66` | `/admin/query` executa SQL arbitrário sem verificar autenticação | Qualquer pessoa pode executar comandos SQL arbitrários na aplicação, incluindo DROP TABLE. |
+| 4 | **Exposição de SECRET_KEY via API** | `controllers.py:248` | Health check retorna `"secret_key": "minha-chave-super-secreta-123"` | Credenciais de segurança expostas em endpoint público. |
+
+#### HIGH (5 problemas)
+
+| # | Problema | Arquivo:Linha | Descrição | Justificativa |
+|---|----------|---------------|-----------|---------------|
+| 1 | **Senhas em Texto Plano** | `models.py:68-77, 96-106` | Senhas armazenadas e comparadas diretamente sem hash | Vazamento do banco expõe todas as senhas dos usuários. Viola práticas básicas de segurança. |
+| 2 | **N+1 Queries** | `models.py:162-192, 196-226` | Loop com queries aninhadas em `get_pedidos_usuario` e `get_todos_pedidos` | Performance degrada exponencialmente com volume de dados. Pode derrubar o servidor. |
+| 3 | **Lógica de Negócio no Controller** | `controllers.py:171-173` | Notificações (email, SMS, push) simuladas diretamente no controller de pedidos | Impossível testar isoladamente, viola Single Responsibility Principle, código não reutilizável. |
+| 4 | **Ausência de Validação de Email** | `controllers.py:144-145` | Usuário criado sem validar formato de email | Dados inválidos no banco, problemas em integrações futuras com email. |
+| 5 | **Endpoint Reset DB sem Autenticação** | `app.py:44-50` | `/admin/reset-db` apaga todo o banco sem autenticação | Qualquer pessoa pode destruir todos os dados da aplicação com uma requisição POST. |
+
+#### MEDIUM (2 problemas)
+
+| # | Problema | Arquivo:Linha | Descrição | Justificativa |
+|---|----------|---------------|-----------|---------------|
+| 1 | **Código Duplicado de Validação** | `controllers.py:28-49, 67-82` | Mesmas validações de produto repetidas em `criar_produto` e `atualizar_produto` | Manutenção difícil, risco de inconsistências entre endpoints similares. |
+| 2 | **Magic Strings para Status** | `controllers.py:204`, `models.py` | Status como `"pendente"`, `"aprovado"` espalhados pelo código sem constantes | Erros de digitação passam silenciosamente, difícil refatorar ou internacionalizar. |
+
+#### LOW (3 problemas)
+
+| # | Problema | Arquivo:Linha | Descrição | Justificativa |
+|---|----------|---------------|-----------|---------------|
+| 1 | **Print para Logging** | `controllers.py:10, 57, 172-174` | Uso de `print()` ao invés de logging estruturado | Sem níveis de log, rotação de arquivos ou formatação padronizada. |
+| 2 | **Concatenação de Strings** | `controllers.py:10` | `"Listando " + str(len(produtos)) + " produtos"` | Menos legível que f-strings, estilo Python 2. |
+| 3 | **Variável Global para DB** | `database.py:5-6` | `db_connection = None` como estado global mutável | Dificulta testes unitários e operação em ambiente multi-thread. |
+
+---
+
+### Projeto 2: ecommerce-api-legacy (Node.js/Express — LMS API)
+
+**Stack:** Node.js + Express 4.18.2 + SQLite3  
+**Domínio:** LMS com fluxo de checkout (usuários, cursos, matrículas, pagamentos)  
+**Arquivos analisados:** 3 (app.js, AppManager.js, utils.js)
+
+#### CRITICAL (3 problemas)
+
+| # | Problema | Arquivo:Linha | Descrição | Justificativa |
+|---|----------|---------------|-----------|---------------|
+| 1 | **Credenciais Hardcoded** | `utils.js:2-5` | `dbPass: "senha_super_secreta_prod_123"`, `paymentGatewayKey: "pk_live_..."` | Credenciais de produção e chave de gateway de pagamento expostas no código-fonte. |
+| 2 | **Criptografia Insegura** | `utils.js:14-19` | Função `badCrypto` usa base64 repetido 10.000 vezes como "hash" | Senhas trivialmente reversíveis. Base64 não é criptografia, é encoding. |
+| 3 | **Log de Dados Sensíveis** | `AppManager.js:37` | `console.log(\`Processando cartão ${cc} na chave ${config.paymentGatewayKey}\`)` | Número completo do cartão de crédito e chave do gateway nos logs. Viola PCI-DSS. |
+
+#### HIGH (4 problemas)
+
+| # | Problema | Arquivo:Linha | Descrição | Justificativa |
+|---|----------|---------------|-----------|---------------|
+| 1 | **God Class** | `AppManager.js:1-115` | Uma única classe contém inicialização de DB, definição de rotas e toda lógica de negócio | Impossível testar, manter ou escalar. Viola completamente separação de responsabilidades. |
+| 2 | **N+1 Queries (3 níveis)** | `AppManager.js:65-96` | Financial report faz queries aninhadas: courses → enrollments → users → payments | Performance O(n³), timeout garantido com volume de dados real. |
+| 3 | **Deleção sem Cascade** | `AppManager.js:100-104` | Delete user deixa enrollments e payments órfãos no banco | Integridade referencial quebrada, dados inconsistentes permanentemente. |
+| 4 | **Callback Hell** | `AppManager.js:27-76` | 6+ níveis de callbacks aninhados no fluxo de checkout | Código ilegível, impossível debugar, propenso a vazamento de recursos. |
+
+#### MEDIUM (2 problemas)
+
+| # | Problema | Arquivo:Linha | Descrição | Justificativa |
+|---|----------|---------------|-----------|---------------|
+| 1 | **Estado Global Mutável** | `utils.js:7-8` | `globalCache = {}` e `totalRevenue = 0` como variáveis globais exportadas | Race conditions em ambiente concorrente, estado imprevisível entre requisições. |
+| 2 | **Ausência de Error Handling** | `AppManager.js:37-75` | Apenas `res.status(500).send("Erro")` sem logging ou tratamento adequado | Difícil diagnosticar problemas em produção, usuário não recebe feedback útil. |
+
+#### LOW (3 problemas)
+
+| # | Problema | Arquivo:Linha | Descrição | Justificativa |
+|---|----------|---------------|-----------|---------------|
+| 1 | **Nomes de Variáveis Ruins** | `AppManager.js:28-32` | `u`, `e`, `p`, `cid`, `cc` ao invés de nomes descritivos | Código ilegível, difícil onboarding de novos desenvolvedores. |
+| 2 | **Código Duplicado em Callbacks** | `AppManager.js:65-96` | Lógica de agregação de dados repetida em múltiplos callbacks | Manutenção difícil, bugs corrigidos em um lugar mas não em outro. |
+| 3 | **Ausência de Documentação** | `AppManager.js` | Nenhum comentário ou JSDoc explicando o fluxo de checkout | Difícil entender regras de negócio sem ler todo o código. |
+
+---
+
+### Projeto 3: task-manager-api (Python/Flask — Task Manager)
+
+**Stack:** Python 3 + Flask + SQLAlchemy + SQLite  
+**Domínio:** API de gerenciamento de tarefas (tasks, users, categories)  
+**Arquivos analisados:** 15 (estrutura parcialmente organizada com models/, routes/, services/, utils/)
+
+> **Nota:** Este projeto já possui alguma separação de camadas, mas ainda apresenta problemas significativos de segurança e arquitetura.
+
+#### CRITICAL (3 problemas)
+
+| # | Problema | Arquivo:Linha | Descrição | Justificativa |
+|---|----------|---------------|-----------|---------------|
+| 1 | **MD5 para Hash de Senhas** | `models/user.py:26-27` | `hashlib.md5(pwd.encode()).hexdigest()` | MD5 é criptograficamente quebrado desde 2004. Rainbow tables quebram em segundos. |
+| 2 | **Credenciais SMTP Hardcoded** | `services/notification_service.py:9-12` | `email_password = 'senha123'` | Credenciais de email expostas no código-fonte. |
+| 3 | **SECRET_KEY Hardcoded** | `app.py:13` | `SECRET_KEY = 'super-secret-key-123'` | Chave de sessão exposta, permite forjar cookies de autenticação. |
+
+#### HIGH (4 problemas)
+
+| # | Problema | Arquivo:Linha | Descrição | Justificativa |
+|---|----------|---------------|-----------|---------------|
+| 1 | **Senha Exposta na API** | `models/user.py:17-25` | Método `to_dict()` retorna `'password': self.password` | Hash de senha exposto em todos os endpoints que retornam dados de usuário. |
+| 2 | **Ausência de Autenticação** | `routes/*.py` | Nenhum endpoint verifica autenticação ou autorização | Qualquer pessoa pode acessar, criar, modificar ou deletar qualquer dado. |
+| 3 | **Código Duplicado (overdue check)** | `routes/task_routes.py:25-35, 67-77, 224-230` + `routes/user_routes.py:122-132` | Mesma lógica de verificação de task atrasada repetida 4+ vezes | Inconsistências entre implementações, manutenção multiplicada. |
+| 4 | **Ausência de Camada Controller** | `routes/*.py` | Lógica de negócio implementada diretamente nas rotas | Viola MVC, impossível reutilizar lógica entre endpoints ou em CLI/jobs. |
+
+#### MEDIUM (3 problemas)
+
+| # | Problema | Arquivo:Linha | Descrição | Justificativa |
+|---|----------|---------------|-----------|---------------|
+| 1 | **N+1 Queries** | `routes/task_routes.py:17-55` | Loop buscando user e category individualmente para cada task | Performance degradada, queries desnecessárias ao banco. |
+| 2 | **Imports Não Utilizados** | `routes/task_routes.py:6` | `import json, os, sys, time` declarados mas nunca usados | Código poluído, confunde leitores sobre dependências reais. |
+| 3 | **Token de Autenticação Fake** | `routes/user_routes.py:163` | `'token': 'fake-jwt-token-' + str(user.id)` | Autenticação simulada sem segurança real, ID exposto no token. |
+
+#### LOW (2 problemas)
+
+| # | Problema | Arquivo:Linha | Descrição | Justificativa |
+|---|----------|---------------|-----------|---------------|
+| 1 | **Métodos Não Utilizados** | `models/task.py:38-53` | `validate_status()`, `validate_priority()`, `is_overdue()` definidos mas nunca chamados | Código morto, validações feitas inline nas rotas em vez de usar os métodos. |
+| 2 | **Constantes Não Utilizadas** | `utils/helpers.py:78-84` | `VALID_STATUSES`, `VALID_ROLES`, etc. definidas mas não importadas | Duplicação de definições, constantes ignoradas em favor de listas inline. |
+
+---
+
+### Resumo da Análise
+
+| Projeto | CRITICAL | HIGH | MEDIUM | LOW | Total |
+|---------|----------|------|--------|-----|-------|
+| code-smells-project | 4 | 5 | 2 | 3 | **14** |
+| ecommerce-api-legacy | 3 | 4 | 2 | 3 | **12** |
+| task-manager-api | 3 | 4 | 3 | 2 | **12** |
+| **Total** | **10** | **13** | **7** | **8** | **38** |
+
+### Padrões Recorrentes Identificados
+
+Os seguintes anti-patterns aparecem em múltiplos projetos e devem ser priorizados no catálogo da skill:
+
+1. **Credenciais Hardcoded** — presente nos 3 projetos (SECRET_KEY, senhas de DB, chaves de API)
+2. **Armazenamento Inseguro de Senhas** — texto plano (projeto 1), base64 (projeto 2), MD5 (projeto 3)
+3. **SQL Injection / Queries Inseguras** — projetos 1 e 2 com concatenação de strings
+4. **N+1 Queries** — presente nos 3 projetos, causando problemas de performance
+5. **Ausência de Separação de Camadas** — lógica de negócio misturada com rotas/controllers
+6. **Código Duplicado** — validações e lógica repetida em múltiplos lugares
+7. **Ausência de Autenticação/Autorização** — endpoints administrativos e sensíveis desprotegidos
+8. **God Class / Arquivo Monolítico** — especialmente grave no projeto 2
+
+
+---
+
