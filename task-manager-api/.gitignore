@@ -1,0 +1,12 @@
+# Ambiente / segredos
+.env
+.venv/
+venv/
+
+# Banco de dados local
+*.db
+instance/
+
+# Python
+__pycache__/
+*.py[cod]
