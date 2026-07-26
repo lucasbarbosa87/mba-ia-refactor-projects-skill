@@ -865,7 +865,117 @@ $ curl http://localhost:5000/usuarios
 
 ### Projeto 2: ecommerce-api-legacy (Node.js/Express)
 
-> ⏳ **Pendente** — Aguardando execução da skill
+#### Relatório de Auditoria
+
+| Severidade | Quantidade |
+|------------|------------|
+| CRITICAL | 4 |
+| HIGH | 5 |
+| MEDIUM | 3 |
+| LOW | 3 |
+| **Total** | **15 findings** |
+
+**Principais problemas identificados:**
+- Credenciais hardcoded (senha de DB, chave do gateway de pagamento, SMTP)
+- Criptografia insegura (base64 repetido como "hash" de senha)
+- Log de dados sensíveis (número de cartão e chave do gateway no console)
+- God Class (AppManager.js concentra DB + rotas + lógica de negócio)
+- N+1 Queries em 3 níveis no relatório financeiro
+- Callback Hell com 6+ níveis de aninhamento
+
+#### Comparação Antes/Depois
+
+**ANTES (estrutura original):**
+```
+ecommerce-api-legacy/
+├── src/
+│   ├── app.js           # Entry point
+│   ├── AppManager.js    # 141 linhas - GOD CLASS (DB + rotas + lógica)
+│   └── utils.js         # Credenciais + crypto inseguro + estado global
+├── api.http
+├── package.json
+└── README.md
+```
+**Total: 3 arquivos JS, ~180 linhas, God Class**
+
+**DEPOIS (estrutura refatorada):**
+```
+ecommerce-api-legacy/
+├── src/
+│   ├── app.js                      # Entry point limpo
+│   ├── config/
+│   │   └── index.js                # Configurações via env vars
+│   ├── constants/
+│   │   └── index.js                # Enums e constantes
+│   ├── controllers/
+│   │   ├── checkoutController.js   # Lógica de checkout
+│   │   ├── reportController.js     # Lógica de relatórios
+│   │   └── userController.js       # Lógica de usuários
+│   ├── database/
+│   │   └── index.js                # Conexão e inicialização
+│   ├── middlewares/
+│   │   ├── auth.js                 # Autenticação
+│   │   └── errorHandler.js         # Tratamento de erros
+│   ├── models/
+│   │   ├── AuditLog.js             # Model de auditoria
+│   │   ├── Course.js               # Model de cursos
+│   │   ├── Enrollment.js           # Model de matrículas
+│   │   ├── FinancialReport.js      # Model de relatórios
+│   │   ├── Payment.js              # Model de pagamentos
+│   │   └── User.js                 # Model de usuários
+│   ├── routes/
+│   │   ├── index.js                # Agregador de rotas
+│   │   ├── checkoutRoutes.js       # Rotas de checkout
+│   │   ├── reportRoutes.js         # Rotas de relatórios
+│   │   └── userRoutes.js           # Rotas de usuários
+│   ├── services/
+│   │   ├── passwordService.js      # Serviço de hash seguro
+│   │   └── paymentService.js       # Serviço de pagamento
+│   └── utils/
+│       ├── AppError.js             # Classe de erro customizada
+│       └── validators.js           # Validações
+├── .env.example                    # Template de variáveis
+├── reports/
+│   └── audit-report.md             # Relatório de auditoria
+├── api.http
+├── package.json
+└── README.md
+```
+**Total: 23 arquivos JS + 1 .env.example, estrutura MVC**
+
+#### Checklist de Validação
+
+| Item | Status |
+|------|--------|
+| Estrutura MVC aplicada | ✅ |
+| God Class eliminada | ✅ |
+| Credenciais em variáveis de ambiente | ✅ |
+| Senhas com hash seguro (bcrypt) | ✅ |
+| Log de dados sensíveis removido | ✅ |
+| Endpoints admin com autenticação | ✅ |
+| Callback hell → async/await | ✅ |
+| N+1 queries otimizadas com JOINs | ✅ |
+| Error handler centralizado | ✅ |
+| Constantes extraídas | ✅ |
+| Aplicação inicia sem erros | ✅ |
+| Todos endpoints originais mantidos | ✅ |
+
+#### Log de Validação
+
+```bash
+$ cd ecommerce-api-legacy
+$ npm start
+Server running on http://localhost:3000
+
+# Teste de endpoints
+$ curl http://localhost:3000/api/health
+{"status": "healthy", "timestamp": "2026-07-26T15:30:00"}
+
+$ curl -X POST http://localhost:3000/api/checkout \
+  -H "Content-Type: application/json" \
+  -d '{"userName": "Test", "email": "test@email.com", "courseId": 1, "creditCard": "4111111111111111"}'
+{"success": true, "enrollmentId": 1, "message": "Enrollment successful"}
+```
 
 ---
 
@@ -881,16 +991,22 @@ $ curl http://localhost:5000/usuarios
 
 | Aspecto | Projeto 1 (Python/Flask) | Projeto 2 (Node.js/Express) | Projeto 3 (Python/Flask) |
 |---------|--------------------------|-----------------------------|-----------------------------|
-| **Detecção de stack** | ✅ Correto | ⏳ Pendente | ⏳ Pendente |
-| **Identificação de anti-patterns** | ✅ 15 findings | ⏳ Pendente | ⏳ Pendente |
-| **Estrutura MVC gerada** | ✅ Adequada para Flask | ⏳ Pendente | ⏳ Pendente |
-| **Validação pós-refatoração** | ✅ Passou | ⏳ Pendente | ⏳ Pendente |
+| **Detecção de stack** | ✅ Correto | ✅ Correto | ⏳ Pendente |
+| **Identificação de anti-patterns** | ✅ 15 findings | ✅ 15 findings | ⏳ Pendente |
+| **Estrutura MVC gerada** | ✅ Adequada para Flask | ✅ Adequada para Express | ⏳ Pendente |
+| **Validação pós-refatoração** | ✅ Passou | ✅ Passou | ⏳ Pendente |
 
 **Observações do Projeto 1:**
 - A skill identificou corretamente todos os anti-patterns documentados na análise manual
 - A fase de auditoria foi precisa, indicando arquivo e linha de cada problema
 - A refatoração manteve compatibilidade com todos os endpoints originais
 - O relatório salvo em `reports/audit-report.md` facilita revisão e auditoria
+
+**Observações do Projeto 2:**
+- A skill adaptou-se corretamente para Node.js/Express (diferente do projeto 1 em Python)
+- Callback hell foi convertido para async/await moderno
+- God Class foi decomposta em 6 models, 3 controllers, 2 services
+- A estrutura de pastas segue convenções do ecossistema Node.js (src/)
 
 ---
 
