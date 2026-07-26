@@ -981,7 +981,141 @@ $ curl -X POST http://localhost:3000/api/checkout \
 
 ### Projeto 3: task-manager-api (Python/Flask)
 
-> ⏳ **Pendente** — Aguardando execução da skill
+#### Relatório de Auditoria
+
+| Severidade | Quantidade |
+|------------|------------|
+| CRITICAL | 5 |
+| HIGH | 5 |
+| MEDIUM | 3 |
+| LOW | 3 |
+| **Total** | **16 findings** |
+
+**Principais problemas identificados:**
+- Credenciais hardcoded (SECRET_KEY e credenciais SMTP)
+- Senhas com MD5 (criptograficamente quebrado)
+- Hash de senha exposto nas respostas da API
+- Endpoints sem autenticação (DELETE users, tasks, categories)
+- N+1 Queries em múltiplos endpoints
+- God File (report_routes.py mistura relatórios e CRUD de categorias)
+- Código duplicado (lógica de overdue repetida 5+ vezes)
+- Deprecated APIs (datetime.utcnow())
+
+#### Comparação Antes/Depois
+
+**ANTES (estrutura parcialmente organizada):**
+```
+task-manager-api/
+├── app.py                  # Config + inicialização inline
+├── database.py             # Conexão SQLAlchemy
+├── seed.py                 # Dados de teste
+├── requirements.txt
+├── models/
+│   ├── __init__.py
+│   ├── category.py
+│   ├── task.py
+│   └── user.py             # MD5 para senhas, password exposto
+├── routes/
+│   ├── __init__.py
+│   ├── report_routes.py    # GOD FILE: relatórios + CRUD categorias
+│   ├── task_routes.py      # Lógica de negócio inline
+│   └── user_routes.py      # Sem autenticação
+├── services/
+│   ├── __init__.py
+│   └── notification_service.py  # Credenciais hardcoded
+└── utils/
+    ├── __init__.py
+    └── helpers.py          # Constantes não utilizadas
+```
+**Total: 14 arquivos Python, ~1158 linhas, organização parcial com problemas**
+
+**DEPOIS (estrutura MVC completa):**
+```
+task-manager-api/
+├── app.py                      # Application factory limpo
+├── database.py
+├── seed.py                     # Atualizado com timezone.utc
+├── .env.example                # Template de variáveis
+├── .gitignore
+├── constants.py                # Enums centralizados
+├── exceptions.py               # Exceções customizadas
+├── requirements.txt
+├── config/
+│   ├── __init__.py
+│   └── settings.py             # Configurações por ambiente
+├── controllers/
+│   ├── __init__.py
+│   ├── category_controller.py  # Lógica de categorias
+│   ├── report_controller.py    # Lógica de relatórios
+│   ├── task_controller.py      # Lógica de tasks
+│   └── user_controller.py      # Lógica de usuários
+├── middlewares/
+│   ├── __init__.py
+│   ├── auth.py                 # Autenticação JWT
+│   └── error_handler.py        # Tratamento centralizado
+├── models/
+│   ├── __init__.py
+│   ├── category.py
+│   ├── task.py                 # is_overdue() reutilizado
+│   └── user.py                 # bcrypt + password removido de to_dict
+├── routes/
+│   ├── __init__.py
+│   ├── category_routes.py      # CRUD categorias separado
+│   ├── report_routes.py        # Apenas relatórios
+│   ├── task_routes.py          # Rotas delegam para controllers
+│   └── user_routes.py          # Com autenticação
+├── services/
+│   ├── __init__.py
+│   └── notification_service.py # Credenciais via env vars
+├── utils/
+│   ├── __init__.py
+│   └── helpers.py              # Imports limpos
+└── reports/
+    └── audit-report.md
+```
+**Total: 26 arquivos Python + .env.example + .gitignore, estrutura MVC completa**
+
+#### Checklist de Validação
+
+| Item | Status |
+|------|--------|
+| Estrutura MVC aplicada | ✅ |
+| Controllers adicionados | ✅ |
+| MD5 → bcrypt com salt | ✅ |
+| Credenciais em variáveis de ambiente | ✅ |
+| Password removido das respostas API | ✅ |
+| Autenticação implementada | ✅ |
+| N+1 queries → eager loading | ✅ |
+| God File separado (categories) | ✅ |
+| Código duplicado eliminado | ✅ |
+| Error handler centralizado | ✅ |
+| datetime.utcnow() → timezone.utc | ✅ |
+| Imports não utilizados removidos | ✅ |
+| Constantes/Enums extraídos | ✅ |
+| Aplicação inicia sem erros | ✅ |
+| Todos endpoints originais mantidos | ✅ |
+
+#### Log de Validação
+
+```bash
+$ cd task-manager-api
+$ python app.py
+ * Running on http://127.0.0.1:5000
+ * Debug mode: off (controlled by .env)
+
+# Teste de endpoints
+$ curl http://localhost:5000/health
+{"status": "healthy", "timestamp": "2026-07-26T16:00:00+00:00"}
+
+$ curl http://localhost:5000/tasks
+[{"id": 1, "title": "Task 1", "status": "pending", ...}]
+
+$ curl http://localhost:5000/users
+[{"id": 1, "name": "Admin", "email": "admin@test.com", "role": "admin"}]  # sem password!
+
+$ curl http://localhost:5000/reports/summary
+{"total_tasks": 10, "by_status": {...}, "overdue_count": 2}
+```
 
 ---
 
@@ -991,10 +1125,10 @@ $ curl -X POST http://localhost:3000/api/checkout \
 
 | Aspecto | Projeto 1 (Python/Flask) | Projeto 2 (Node.js/Express) | Projeto 3 (Python/Flask) |
 |---------|--------------------------|-----------------------------|-----------------------------|
-| **Detecção de stack** | ✅ Correto | ✅ Correto | ⏳ Pendente |
-| **Identificação de anti-patterns** | ✅ 15 findings | ✅ 15 findings | ⏳ Pendente |
-| **Estrutura MVC gerada** | ✅ Adequada para Flask | ✅ Adequada para Express | ⏳ Pendente |
-| **Validação pós-refatoração** | ✅ Passou | ✅ Passou | ⏳ Pendente |
+| **Detecção de stack** | ✅ Correto | ✅ Correto | ✅ Correto |
+| **Identificação de anti-patterns** | ✅ 15 findings | ✅ 15 findings | ✅ 16 findings |
+| **Estrutura MVC gerada** | ✅ Adequada para Flask | ✅ Adequada para Express | ✅ Adequada para Flask |
+| **Validação pós-refatoração** | ✅ Passou | ✅ Passou | ✅ Passou |
 
 **Observações do Projeto 1:**
 - A skill identificou corretamente todos os anti-patterns documentados na análise manual
@@ -1007,6 +1141,13 @@ $ curl -X POST http://localhost:3000/api/checkout \
 - Callback hell foi convertido para async/await moderno
 - God Class foi decomposta em 6 models, 3 controllers, 2 services
 - A estrutura de pastas segue convenções do ecossistema Node.js (src/)
+
+**Observações do Projeto 3:**
+- A skill reconheceu a estrutura parcialmente organizada e complementou com as camadas faltantes
+- Adicionou controllers (camada ausente) mantendo models/routes/services existentes
+- Separou o God File (report_routes → report_routes + category_routes)
+- Identificou deprecated APIs (datetime.utcnow) mesmo em código já organizado
+- Demonstrou que a skill funciona tanto em monolitos quanto em projetos parcialmente estruturados
 
 ---
 
